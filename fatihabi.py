@@ -157,8 +157,60 @@ if uploaded_file:
                 st.markdown(f"**Note:** {footnote}")
 
         elif analysis_type == "Multiple ROC Curves":
-            st.warning("ROC table generation is only supported for Single ROC Curve.")
+            # 1. Değişken Seçimi
+            outcome_var = st.sidebar.selectbox("Select Outcome Variable (Binary 0/1)", options=df.columns, key="multi_outcome")
+            predictor_vars = st.sidebar.multiselect("Select Predictor Variables", options=df.select_dtypes(include=[np.number]).columns, key="multi_predictors")
 
+            plot_title = st.sidebar.text_input("ROC Title", "Combined ROC Curves")
+            
+            if not predictor_vars:
+                st.info("Please select at least one predictor variable to plot.")
+            else:
+                fig, ax = plt.subplots(figsize=(8, 6))
+                
+                # Renk paleti oluştur (değişken sayısı kadar)
+                colors = plt.cm.get_cmap('tab10', len(predictor_vars))
+
+                # 2. Döngü ile her değişken için ROC çizimi
+                for i, var in enumerate(predictor_vars):
+                    # Veriyi hazırla (Single ROC kısmındaki mantığın aynısı)
+                    y_true_multi = pd.to_numeric(df[outcome_var], errors='coerce')
+                    y_scores_multi = pd.to_numeric(df[var], errors='coerce')
+                    
+                    # Eksik verileri temizle
+                    mask = ~y_true_multi.isna() & ~y_scores_multi.isna()
+                    y_true_clean = y_true_multi[mask].astype(int)
+                    y_scores_clean = y_scores_multi[mask].astype(float)
+                    
+                    # 1/2 kodlamasını 0/1'e çevir (Eğer SPSS verisi ise gerekebilir)
+                    # Eğer veriniz zaten 0/1 ise bu satır zarar vermez, 2 yoksa değiştirmez.
+                    if set(y_true_clean.unique()) == {1, 2}:
+                         y_true_clean = y_true_clean.replace({2: 0, 1: 1})
+
+                    # ROC Hesapla
+                    fpr, tpr, _ = roc_curve(y_true_clean, y_scores_clean)
+                    roc_auc = auc(fpr, tpr)
+
+                    # Grafiğe ekle
+                    ax.plot(fpr * 100, tpr * 100, lw=2, color=colors(i),
+                            label=f'{var} (AUC = {roc_auc:.3f})')
+
+                # 3. Grafik Düzeni
+                ax.plot([0, 100], [0, 100], color='black', linestyle='--', lw=1) # Diyagonal çizgi
+                ax.set_xlim([0.0, 100.0])
+                ax.set_ylim([0.0, 105.0])
+                ax.set_xlabel('100 - Specificity (False Positive Rate %)')
+                ax.set_ylabel('Sensitivity (True Positive Rate %)')
+                ax.set_title(plot_title)
+                ax.legend(loc="lower right")
+                ax.grid(True, alpha=0.3)
+
+                st.pyplot(fig)
+                
+                st.markdown("""
+                **Not:** Çoklu ROC eğrilerinde karmaşıklığı önlemek için "Tablo" (Cut-off, Sensitivite vb.) 
+                verilmemiştir. Detaylı tablo için 'Single ROC Curve' modunu kullanabilirsiniz.
+                """)
     with tab2:
         if analysis_type == "Single ROC Curve" and y_true is not None:
             y_pred = (y_scores <= best_threshold).astype(int)
@@ -202,4 +254,5 @@ if uploaded_file:
         - Developed interactively with support for CSV, TXT, SAV formats
 
         **Version**: 1.0
+
         """)
