@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pyreadstat
 from sklearn.metrics import roc_curve, auc, confusion_matrix
-from scipy.stats import spearmanr, norm
+from scipy.stats import spearmanr, norm, mannwhitneyu
 from io import BytesIO
 
 st.set_page_config(page_title="ROC AUC & Correlation Heatmap Dashboard", layout="wide")
@@ -216,27 +216,39 @@ if uploaded_file:
                     sens = tpr[best_idx] * 100
                     spec = (1 - fpr[best_idx]) * 100
                     
-                    # PPV / NPV Hesabı
-                    # Not: Cutoff, >= ise Pozitif kabul edilir
+                    # --- PPV / NPV Hesabı ---
                     y_pred = (y_scores_clean >= opt_cutoff).astype(int)
                     tn, fp, fn, tp = confusion_matrix(y_true_clean, y_pred).ravel()
                     ppv = 100 * tp / (tp + fp) if (tp + fp) > 0 else 0
                     npv = 100 * tn / (tn + fn) if (tn + fn) > 0 else 0
 
+                    # --- P DEĞERİ HESABI (YENİ EKLENDİ) ---
+                    # Mann-Whitney U testi, AUC'nin 0.5'ten farkını test eder (Hızlı yöntem)
+                    group_pos = y_scores_clean[y_true_clean == 1]
+                    group_neg = y_scores_clean[y_true_clean == 0]
+                    try:
+                        _, p_val = mannwhitneyu(group_pos, group_neg, alternative='two-sided')
+                    except ValueError:
+                        p_val = 1.0 # Hata olursa (örn: tüm değerler aynıysa)
+                    
+                    p_text = f"{p_val:.3f}"
+                    if p_val < 0.001:
+                        p_text = "<0.001*"
+                    elif p_val < 0.05:
+                        p_text += "*"
+
                     # Sonuçları listeye ekle
                     var_label = var + (" [Ters]" if inverted else "")
-                    
-                    # Eğer değerler ters çevrildiyse, gerçek cutoff'u göstermek için tekrar negatifi alınabilir
-                    # Ancak kafa karışıklığı olmaması için analize giren (dönüştürülmüş) değeri veriyoruz.
                     
                     results_list.append({
                         "Variable": var_label,
                         "AUC": f"{roc_auc:.3f}",
+                        "p-value": p_text,              # YENİ SÜTUN
                         "Cut-off": f"{opt_cutoff:.3f}",
-                        "Sensitivity": f"{sens:.1f}",
-                        "Specificity": f"{spec:.1f}",
-                        "PPV": f"{ppv:.1f}",
-                        "NPV": f"{npv:.1f}"
+                        "Sensitivity": f"{sens:.3f}",
+                        "Specificity": f"{spec:.3f}",
+                        "PPV": f"{ppv:.3f}",
+                        "NPV": f"{npv:.3f}"
                     })
 
                     # Grafiğe çiz
@@ -304,6 +316,7 @@ if uploaded_file:
         **Version**: 1.0
 
         """)
+
 
 
 
