@@ -233,10 +233,10 @@ if uploaded_file:
                         "Variable": var_label,
                         "AUC": f"{roc_auc:.3f}",
                         "Cut-off": f"{opt_cutoff:.3f}",
-                        "Sensitivity": f"{sens:.1f}",
-                        "Specificity": f"{spec:.1f}",
-                        "PPV": f"{ppv:.1f}",
-                        "NPV": f"{npv:.1f}"
+                        "Sensitivity": f"{sens:.3f}",
+                        "Specificity": f"{spec:.3f}",
+                        "PPV": f"{ppv:.3f}",
+                        "NPV": f"{npv:.3f}"
                     })
 
                     # Grafiğe çiz
@@ -304,6 +304,7 @@ if uploaded_file:
         **Version**: 1.0
 
         """)
+
 
 
 
