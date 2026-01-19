@@ -197,13 +197,23 @@ if uploaded_file:
                     if set(y_true_clean.unique()) == {1, 2}:
                          y_true_clean = y_true_clean.replace({2: 0, 1: 1})
 
-                    # ROC Hesapla
                     fpr, tpr, _ = roc_curve(y_true_clean, y_scores_clean)
                     roc_auc = auc(fpr, tpr)
 
-                    # Grafiğe ekle
-                    ax.plot(fpr * 100, tpr * 100, lw=2, color=colors(i),
-                            label=f'{var} (AUC = {roc_auc:.3f})')
+                    # AUC < 0.5 ise Yönü Düzelt
+                    inverted = False
+                    if roc_auc < 0.5:
+                        y_scores_clean = -y_scores_clean
+                        fpr, tpr, _ = roc_curve(y_true_clean, y_scores_clean)
+                        roc_auc = auc(fpr, tpr)
+                        inverted = True
+                    
+                    # Etikete bilgi ekle
+                    label_text = f'{var} (AUC = {roc_auc:.3f})'
+                    if inverted:
+                        label_text += " [Ters]"
+
+                    ax.plot(fpr * 100, tpr * 100, lw=2, color=colors(i), label=label_text)
 
                 # 3. Grafik Düzeni
                 ax.plot([0, 100], [0, 100], color='black', linestyle='--', lw=1) # Diyagonal çizgi
@@ -266,4 +276,5 @@ if uploaded_file:
         **Version**: 1.0
 
         """)
+
 
