@@ -108,8 +108,18 @@ if uploaded_file:
             y_scores = y_scores[mask].astype(float)
             y_true = y_true.replace({2: 0, 1: 1})
 
+            # --- BAŞLANGIÇ: Otomatik Yön Düzeltme ---
             fpr, tpr, thresholds = roc_curve(y_true, y_scores)
             roc_auc = auc(fpr, tpr)
+
+            if roc_auc < 0.5:
+                # AUC 0.5'ten küçükse, değişken ters çalışıyordur.
+                # Skorları negatife çevirerek yönü düzeltiyoruz.
+                y_scores = -y_scores
+                fpr, tpr, thresholds = roc_curve(y_true, y_scores)
+                roc_auc = auc(fpr, tpr)
+                st.info(f"🔄 Bilgi: '{predictor_var}' değişkeni hastalık durumu ile ters ilişkili (negatif korelasyon). Analiz için değerler otomatik olarak ters çevrildi.")
+            # --- BİTİŞ ---
 
             youden_index = tpr - fpr
             best_index = np.argmax(youden_index)
@@ -256,3 +266,4 @@ if uploaded_file:
         **Version**: 1.0
 
         """)
+
