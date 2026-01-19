@@ -167,6 +167,8 @@ if uploaded_file:
                 st.markdown(f"**Note:** {footnote}")
 
         elif analysis_type == "Multiple ROC Curves":
+            st.subheader("Multiple ROC Analysis")
+            
             # 1. Değişken Seçimi
             outcome_var = st.sidebar.selectbox("Select Outcome Variable (Binary 0/1)", options=df.columns, key="multi_outcome")
             predictor_vars = st.sidebar.multiselect("Select Predictor Variables", options=df.select_dtypes(include=[np.number]).columns, key="multi_predictors")
@@ -176,47 +178,73 @@ if uploaded_file:
             if not predictor_vars:
                 st.info("Please select at least one predictor variable to plot.")
             else:
-                fig, ax = plt.subplots(figsize=(8, 6))
-                
-                # Renk paleti oluştur (değişken sayısı kadar)
+                fig, ax = plt.subplots(figsize=(10, 8))
                 colors = plt.cm.get_cmap('tab10', len(predictor_vars))
+                
+                # Tablo verilerini tutacak liste
+                results_list = []
 
-                # 2. Döngü ile her değişken için ROC çizimi
+                # 2. Döngü
                 for i, var in enumerate(predictor_vars):
-                    # Veriyi hazırla (Single ROC kısmındaki mantığın aynısı)
+                    # Veri Temizleme
                     y_true_multi = pd.to_numeric(df[outcome_var], errors='coerce')
                     y_scores_multi = pd.to_numeric(df[var], errors='coerce')
                     
-                    # Eksik verileri temizle
                     mask = ~y_true_multi.isna() & ~y_scores_multi.isna()
                     y_true_clean = y_true_multi[mask].astype(int)
                     y_scores_clean = y_scores_multi[mask].astype(float)
                     
-                    # 1/2 kodlamasını 0/1'e çevir (Eğer SPSS verisi ise gerekebilir)
-                    # Eğer veriniz zaten 0/1 ise bu satır zarar vermez, 2 yoksa değiştirmez.
                     if set(y_true_clean.unique()) == {1, 2}:
                          y_true_clean = y_true_clean.replace({2: 0, 1: 1})
 
-                    fpr, tpr, _ = roc_curve(y_true_clean, y_scores_clean)
+                    # İlk ROC Hesabı
+                    fpr, tpr, thresholds = roc_curve(y_true_clean, y_scores_clean)
                     roc_auc = auc(fpr, tpr)
-
-                    # AUC < 0.5 ise Yönü Düzelt
+                    
+                    # Yön Kontrolü (AUC < 0.5 ise ters çevir)
                     inverted = False
                     if roc_auc < 0.5:
                         y_scores_clean = -y_scores_clean
-                        fpr, tpr, _ = roc_curve(y_true_clean, y_scores_clean)
+                        fpr, tpr, thresholds = roc_curve(y_true_clean, y_scores_clean)
                         roc_auc = auc(fpr, tpr)
                         inverted = True
+
+                    # İstatistikleri Hesapla (Youden Index)
+                    youden_index = tpr - fpr
+                    best_idx = np.argmax(youden_index)
+                    opt_cutoff = thresholds[best_idx]
+                    sens = tpr[best_idx] * 100
+                    spec = (1 - fpr[best_idx]) * 100
                     
-                    # Etikete bilgi ekle
-                    label_text = f'{var} (AUC = {roc_auc:.3f})'
-                    if inverted:
-                        label_text += " [Ters]"
+                    # PPV / NPV Hesabı
+                    # Not: Cutoff, >= ise Pozitif kabul edilir
+                    y_pred = (y_scores_clean >= opt_cutoff).astype(int)
+                    tn, fp, fn, tp = confusion_matrix(y_true_clean, y_pred).ravel()
+                    ppv = 100 * tp / (tp + fp) if (tp + fp) > 0 else 0
+                    npv = 100 * tn / (tn + fn) if (tn + fn) > 0 else 0
 
-                    ax.plot(fpr * 100, tpr * 100, lw=2, color=colors(i), label=label_text)
+                    # Sonuçları listeye ekle
+                    var_label = var + (" [Ters]" if inverted else "")
+                    
+                    # Eğer değerler ters çevrildiyse, gerçek cutoff'u göstermek için tekrar negatifi alınabilir
+                    # Ancak kafa karışıklığı olmaması için analize giren (dönüştürülmüş) değeri veriyoruz.
+                    
+                    results_list.append({
+                        "Variable": var_label,
+                        "AUC": f"{roc_auc:.3f}",
+                        "Cut-off": f"{opt_cutoff:.3f}",
+                        "Sensitivity": f"{sens:.1f}",
+                        "Specificity": f"{spec:.1f}",
+                        "PPV": f"{ppv:.1f}",
+                        "NPV": f"{npv:.1f}"
+                    })
 
-                # 3. Grafik Düzeni
-                ax.plot([0, 100], [0, 100], color='black', linestyle='--', lw=1) # Diyagonal çizgi
+                    # Grafiğe çiz
+                    ax.plot(fpr * 100, tpr * 100, lw=2, color=colors(i),
+                            label=f'{var_label} (AUC={roc_auc:.2f})')
+
+                # 3. Grafik Ayarları
+                ax.plot([0, 100], [0, 100], color='black', linestyle='--', lw=1)
                 ax.set_xlim([0.0, 100.0])
                 ax.set_ylim([0.0, 105.0])
                 ax.set_xlabel('100 - Specificity (False Positive Rate %)')
@@ -227,10 +255,10 @@ if uploaded_file:
 
                 st.pyplot(fig)
                 
-                st.markdown("""
-                **Not:** Çoklu ROC eğrilerinde karmaşıklığı önlemek için "Tablo" (Cut-off, Sensitivite vb.) 
-                verilmemiştir. Detaylı tablo için 'Single ROC Curve' modunu kullanabilirsiniz.
-                """)
+                # 4. Tabloyu Göster
+                st.write("### 📋 Comparative Diagnostic Performance Table")
+                metrics_df = pd.DataFrame(results_list)
+                st.dataframe(metrics_df, use_container_width=True)
     with tab2:
         if analysis_type == "Single ROC Curve" and y_true is not None:
             y_pred = (y_scores <= best_threshold).astype(int)
@@ -276,5 +304,6 @@ if uploaded_file:
         **Version**: 1.0
 
         """)
+
 
 
