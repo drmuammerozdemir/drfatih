@@ -48,7 +48,7 @@ if uploaded_file:
     tab1, tab2, tab3 = st.tabs(["🔬 Analysis", "📋 ROC Table", "🧠 About"])
 
     with tab1:
-        if analysis_type == "Correlation Heatmap":
+        elif analysis_type == "Correlation Heatmap":
             correlation_vars = st.sidebar.multiselect(
                 "Select variables for Correlation Matrix (numeric)",
                 options=df.columns,
@@ -60,10 +60,18 @@ if uploaded_file:
                 st.stop()
 
             heatmap_title = st.sidebar.text_input("Heatmap Title", value="Spearman Correlation Heatmap")
+            
+            # --- YENİ EKLENEN AYARLAR ---
+            st.sidebar.markdown("---")
+            st.sidebar.write("### 🎨 Heatmap Settings")
+            show_annot = st.sidebar.checkbox("Show Values inside cells", value=True)
+            font_scale = st.sidebar.slider("Font Scale", 0.5, 2.0, 1.0)
+            
             custom_names = {}
-            for col in correlation_vars:
-                new_name = st.sidebar.text_input(f"Rename '{col}'", value=col)
-                custom_names[col] = new_name
+            with st.expander("Rename Variables (Optional)"):
+                for col in correlation_vars:
+                    new_name = st.text_input(f"Rename '{col}'", value=col)
+                    custom_names[col] = new_name
 
             footnote = st.text_area("Add footnote below the plot", value="")
 
@@ -72,23 +80,37 @@ if uploaded_file:
 
             corr, _ = spearmanr(df_corr)
             corr_df = pd.DataFrame(corr, index=df_corr.columns, columns=df_corr.columns)
-
             mask = np.triu(np.ones_like(corr_df, dtype=bool))
 
-            fig, ax = plt.subplots(figsize=(10, 8))
+            # --- DİNAMİK BOYUTLANDIRMA ---
+            # Her değişken için yaklaşık 0.8 inç yer ayır, minimum 10x8 olsun.
+            num_vars = len(correlation_vars)
+            calc_size = max(10, num_vars * 0.8) 
+            
+            fig, ax = plt.subplots(figsize=(calc_size, calc_size * 0.8))
+            
+            # Font büyüklüğünü ayarla
+            sns.set(font_scale=font_scale)
+            
             sns.heatmap(
                 corr_df, mask=mask, cmap=palette_choice, center=0,
-                annot=True, fmt=".2f", square=True, linewidths=.5, cbar_kws={"shrink": .75}, ax=ax
+                annot=show_annot, # Kullanıcı seçimine bağlandı
+                fmt=".2f", square=True, linewidths=.5, 
+                cbar_kws={"shrink": .75}, ax=ax
             )
+            
+            # Eksen yazılarını düzelt
             ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
             ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
-            ax.set_aspect('equal', adjustable='box')
-            fig.tight_layout()
+            
             plt.title(heatmap_title)
             st.pyplot(fig)
 
             if footnote:
                 st.markdown(f"**Note:** {footnote}")
+            
+            # Ayarları sıfırla (diğer grafikleri etkilemesin)
+            sns.reset_orig()
 
         elif analysis_type == "Single ROC Curve":
             outcome_var = st.sidebar.selectbox("Select Outcome Variable (0/1)", options=df.columns)
@@ -316,6 +338,7 @@ if uploaded_file:
         **Version**: 1.0
 
         """)
+
 
 
 
