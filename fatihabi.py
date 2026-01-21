@@ -106,7 +106,7 @@ if uploaded_file:
             plt.title(heatmap_title)
             # 1. EKRANDA GÖSTERİM (A4 Genişliğine Yayma)
                 # use_container_width=True, grafiği sütun genişliğine kadar büyütür.
-                st.pyplot(fig, use_container_width=True)
+            st.pyplot(fig, use_container_width=True)
 
                 # 2. İNDİRME BUTONU (300 DPI - Yüksek Kalite)
                 # İndirme işlemi için bir bellek tamponu oluşturuyoruz
@@ -201,7 +201,7 @@ if uploaded_file:
 
             # 1. EKRANDA GÖSTERİM (A4 Genişliğine Yayma)
                 # use_container_width=True, grafiği sütun genişliğine kadar büyütür.
-                st.pyplot(fig, use_container_width=True)
+            st.pyplot(fig, use_container_width=True)
 
                 # 2. İNDİRME BUTONU (300 DPI - Yüksek Kalite)
                 # İndirme işlemi için bir bellek tamponu oluşturuyoruz
@@ -321,7 +321,7 @@ if uploaded_file:
 
                 # 1. EKRANDA GÖSTERİM (A4 Genişliğine Yayma)
                 # use_container_width=True, grafiği sütun genişliğine kadar büyütür.
-                st.pyplot(fig, use_container_width=True)
+            st.pyplot(fig, use_container_width=True)
 
                 # 2. İNDİRME BUTONU (300 DPI - Yüksek Kalite)
                 # İndirme işlemi için bir bellek tamponu oluşturuyoruz
@@ -386,6 +386,7 @@ if uploaded_file:
         **Version**: 1.0
 
         """)
+
 
 
 
