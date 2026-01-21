@@ -48,7 +48,7 @@ if uploaded_file:
     tab1, tab2, tab3 = st.tabs(["🔬 Analysis", "📋 ROC Table", "🧠 About"])
 
     with tab1:
-        elif analysis_type == "Correlation Heatmap":
+        if analysis_type == "Correlation Heatmap":
             correlation_vars = st.sidebar.multiselect(
                 "Select variables for Correlation Matrix (numeric)",
                 options=df.columns,
@@ -338,6 +338,7 @@ if uploaded_file:
         **Version**: 1.0
 
         """)
+
 
 
 
