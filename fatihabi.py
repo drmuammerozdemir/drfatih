@@ -65,9 +65,20 @@ if uploaded_file:
         st.sidebar.header("⚙️ Grafik Ayarları")
         
         # Key parametreleri eklendi (Hafıza için şart)
+        palette_options = [
+            # 1. Diverging (Korelasyon için en iyileri - Ortası beyaz/nötr)
+            "coolwarm", "RdBu", "RdBu_r", "vlag", "icefire", "Spectral", "RdYlGn", "RdYlBu", "RdGy", "PuOr", "BrBG", "PRGn", "PiYG",
+            # 2. Sequential (Tek yönlü artışlar için)
+            "rocket", "mako", "flare", "crest", "viridis", "plasma", "inferno", "magma", "cividis",
+            # 3. Tek Renk Tonları
+            "Blues", "Reds", "Greens", "Oranges", "Purples", "Greys", "YlOrBr",
+            # 4. Diğer Popülerler
+            "cubehelix", "twilight", "ocean", "gist_earth", "terrain"
+        ]
+
         palette_choice = st.sidebar.selectbox(
             "Heatmap Renk Paleti",
-            ["coolwarm", "vlag", "rocket", "mako", "icefire"],
+            palette_options,
             key="palette_choice"
         )
 
@@ -307,4 +318,5 @@ if uploaded_file:
                     file_name="analiz_projesi.pkl",
                     mime="application/octet-stream"
                 )
+
 
