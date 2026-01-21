@@ -104,7 +104,23 @@ if uploaded_file:
             ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
             
             plt.title(heatmap_title)
-            st.pyplot(fig)
+            # 1. EKRANDA GÖSTERİM (A4 Genişliğine Yayma)
+                # use_container_width=True, grafiği sütun genişliğine kadar büyütür.
+                st.pyplot(fig, use_container_width=True)
+
+                # 2. İNDİRME BUTONU (300 DPI - Yüksek Kalite)
+                # İndirme işlemi için bir bellek tamponu oluşturuyoruz
+                buf = BytesIO()
+                # Grafiği 300 DPI ve sıkıştırılmış (fazla boşluksuz) olarak kaydediyoruz
+                fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
+                
+                # Butonu ekliyoruz
+                st.download_button(
+                    label="💾 Grafiği İndir (300 DPI / Yüksek Çözünürlük)",
+                    data=buf.getvalue(),
+                    file_name="grafik_300dpi.png",
+                    mime="image/png"
+                )
 
             if footnote:
                 st.markdown(f"**Note:** {footnote}")
@@ -183,7 +199,23 @@ if uploaded_file:
             ax.text(60, 15, info_text, fontsize=10,
                     bbox=dict(boxstyle="round", facecolor="white", edgecolor="navy"))
 
-            st.pyplot(fig)
+            # 1. EKRANDA GÖSTERİM (A4 Genişliğine Yayma)
+                # use_container_width=True, grafiği sütun genişliğine kadar büyütür.
+                st.pyplot(fig, use_container_width=True)
+
+                # 2. İNDİRME BUTONU (300 DPI - Yüksek Kalite)
+                # İndirme işlemi için bir bellek tamponu oluşturuyoruz
+                buf = BytesIO()
+                # Grafiği 300 DPI ve sıkıştırılmış (fazla boşluksuz) olarak kaydediyoruz
+                fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
+                
+                # Butonu ekliyoruz
+                st.download_button(
+                    label="💾 Grafiği İndir (300 DPI / Yüksek Çözünürlük)",
+                    data=buf.getvalue(),
+                    file_name="grafik_300dpi.png",
+                    mime="image/png"
+                )
 
             if footnote:
                 st.markdown(f"**Note:** {footnote}")
@@ -287,7 +319,23 @@ if uploaded_file:
                 ax.legend(loc="lower right")
                 ax.grid(True, alpha=0.3)
 
-                st.pyplot(fig)
+                # 1. EKRANDA GÖSTERİM (A4 Genişliğine Yayma)
+                # use_container_width=True, grafiği sütun genişliğine kadar büyütür.
+                st.pyplot(fig, use_container_width=True)
+
+                # 2. İNDİRME BUTONU (300 DPI - Yüksek Kalite)
+                # İndirme işlemi için bir bellek tamponu oluşturuyoruz
+                buf = BytesIO()
+                # Grafiği 300 DPI ve sıkıştırılmış (fazla boşluksuz) olarak kaydediyoruz
+                fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
+                
+                # Butonu ekliyoruz
+                st.download_button(
+                    label="💾 Grafiği İndir (300 DPI / Yüksek Çözünürlük)",
+                    data=buf.getvalue(),
+                    file_name="grafik_300dpi.png",
+                    mime="image/png"
+                )
                 
                 # 4. Tabloyu Göster
                 st.write("### 📋 Comparative Diagnostic Performance Table")
@@ -338,6 +386,7 @@ if uploaded_file:
         **Version**: 1.0
 
         """)
+
 
 
 
