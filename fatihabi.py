@@ -103,24 +103,22 @@ if uploaded_file:
             ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
             ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
             
-            plt.title(heatmap_title)
-            # 1. EKRANDA GÖSTERİM (A4 Genişliğine Yayma)
-                # use_container_width=True, grafiği sütun genişliğine kadar büyütür.
             st.pyplot(fig, use_container_width=True)
 
-                # 2. İNDİRME BUTONU (300 DPI - Yüksek Kalite)
-                # İndirme işlemi için bir bellek tamponu oluşturuyoruz
-                buf = BytesIO()
-                # Grafiği 300 DPI ve sıkıştırılmış (fazla boşluksuz) olarak kaydediyoruz
-                fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
-                
-                # Butonu ekliyoruz
-                st.download_button(
-                    label="💾 Grafiği İndir (300 DPI / Yüksek Çözünürlük)",
-                    data=buf.getvalue(),
-                    file_name="grafik_300dpi.png",
-                    mime="image/png"
-                )
+            # 2. İndirme Butonu (300 DPI)
+            buf = BytesIO()
+            fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
+            
+            st.download_button(
+                label="💾 Grafiği İndir (300 DPI)",
+                data=buf.getvalue(),
+                file_name="heatmap_300dpi.png",
+                mime="image/png"
+            )
+            # --- KOPYALAYACAĞINIZ KISIM BİTİŞİ ---
+
+            if footnote:
+                st.markdown(f"**Note:** {footnote}")
 
             if footnote:
                 st.markdown(f"**Note:** {footnote}")
@@ -386,6 +384,7 @@ if uploaded_file:
         **Version**: 1.0
 
         """)
+
 
 
 
