@@ -331,7 +331,7 @@ if uploaded_file:
 
                             # --- İSİM DEĞİŞTİRME UYGULAMASI ---
                             display_name = custom_names.get(var, var)
-                            lbl = display_name + (" [Ters]" if inverted else "")
+                            lbl = display_name + (" [Inv]" if inverted else "")
                             
                             # Tabloya Ekle (Panel bilgisiyle beraber)
                             results_list.append({
@@ -403,6 +403,7 @@ if uploaded_file:
                     file_name="analiz_projesi.pkl",
                     mime="application/octet-stream"
                 )
+
 
 
 
