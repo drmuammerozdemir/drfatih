@@ -362,37 +362,48 @@ if uploaded_file:
                     st.write("### Karşılaştırmalı Tablo")
                     st.dataframe(pd.DataFrame(results_list), use_container_width=True)
                     
-        # --- PROJE KAYDETME SEKMESİ ---
+        # --- PROJE KAYDETME SEKMESİ (GÜNCELLENMİŞ) ---
         with tab3:
             st.header("💾 Projeyi Bilgisayara Kaydet")
             st.info("""
-            Bu özellik, mevcut verinizi ve yaptığınız tüm seçimleri (değişkenler, renkler, başlıklar) 
-            bir dosya (.pkl) olarak indirir. Daha sonra bu dosyayı 'Veri Yükleme' kısmından yükleyerek 
-            kaldığınız yerden devam edebilirsiniz.
+            Bu özellik, mevcut verinizi, tüm grafik ayarlarınızı, seçtiğiniz panelleri 
+            ve değiştirdiğiniz değişken isimlerini bir dosya (.pkl) olarak indirir.
             """)
             
-            # Kaydedilecek verileri hazırla
             if st.button("Proje Dosyasını Oluştur ve İndir"):
+                # 1. Temel Sabit Ayarları Kaydet
                 project_state = {
                     "data_frame": df, # Verinin kendisi
-                    # Widget Key'lerini kaydet
                     "palette_choice": st.session_state.get("palette_choice"),
                     "analysis_type": st.session_state.get("analysis_type"),
+                    
+                    # Heatmap Ayarları
                     "corr_vars": st.session_state.get("corr_vars"),
                     "hm_title": st.session_state.get("hm_title"),
                     "hm_annot": st.session_state.get("hm_annot"),
                     "hm_font": st.session_state.get("hm_font"),
                     "hm_note": st.session_state.get("hm_note"),
+                    
+                    # Single ROC Ayarları
                     "s_outcome": st.session_state.get("s_outcome"),
                     "s_predictor": st.session_state.get("s_predictor"),
                     "s_title": st.session_state.get("s_title"),
                     "s_label": st.session_state.get("s_label"),
+                    
+                    # Multiple ROC Ayarları (Sabitler)
                     "m_outcome": st.session_state.get("m_outcome"),
-                    "m_predictors": st.session_state.get("m_predictors"),
                     "m_title": st.session_state.get("m_title"),
+                    "m_layout": st.session_state.get("m_layout"), # Yeni eklenen layout
                 }
+
+                # 2. Dinamik Ayarları (Panel Seçimleri ve İsim Değişiklikleri) Otomatik Ekle
+                # session_state içindeki tüm anahtarları tarıyoruz
+                for key in st.session_state:
+                    # Eğer anahtar "m_panel_" (Panel seçimi) veya "rename_" (İsim değiştirme) ile başlıyorsa kaydet
+                    if key.startswith("m_panel_") or key.startswith("rename_"):
+                        project_state[key] = st.session_state[key]
                 
-                # Pickle ile paketle
+                # 3. Dosyayı Oluştur ve İndir
                 buffer = BytesIO()
                 pickle.dump(project_state, buffer)
                 buffer.seek(0)
