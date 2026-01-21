@@ -209,18 +209,56 @@ if uploaded_file:
                     })
                     st.dataframe(tbl, use_container_width=True)
 
-            # 3. MULTIPLE ROC CURVES
+            # 3. MULTIPLE ROC CURVES (GELİŞTİRİLMİŞ LAYOUT)
             elif analysis_type == "Multiple ROC Curves":
                 outcome_var = st.sidebar.selectbox("Outcome (Hastalık 0/1)", df.columns, key="m_outcome")
                 predictor_vars = st.sidebar.multiselect("Predictor Değişkenler", df.select_dtypes(include=[np.number]).columns, key="m_predictors")
-                plot_title = st.sidebar.text_input("Başlık", "Combined ROC Analysis", key="m_title")
+                plot_title = st.sidebar.text_input("Ana Başlık", "Combined ROC Analysis", key="m_title")
+                
+                # --- YENİ EKLENEN LAYOUT SEÇENEĞİ ---
+                layout_mode = st.sidebar.radio(
+                    "Grafik Düzeni", 
+                    ["Tek Grafik (Hepsi Bir Arada)", "2 Panel (Yan Yana)", "4 Panel (2x2 Grid)"],
+                    key="m_layout"
+                )
 
                 if predictor_vars:
-                    fig, ax = plt.subplots(figsize=(10, 8))
+                    # Layout Ayarlarına Göre Figür Oluşturma
+                    if layout_mode == "Tek Grafik (Hepsi Bir Arada)":
+                        n_rows, n_cols = 1, 1
+                        figsize = (10, 8)
+                    elif layout_mode == "2 Panel (Yan Yana)":
+                        n_rows, n_cols = 1, 2
+                        figsize = (16, 8) # Genişlik artırıldı
+                    else: # 4 Panel
+                        n_rows, n_cols = 2, 2
+                        figsize = (16, 14) # Hem en hem boy artırıldı
+
+                    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
+                    
+                    # Axes yapısını düzleştir (Döngüde kolay gezmek için)
+                    if n_rows * n_cols > 1:
+                        axes_flat = axes.flatten()
+                    else:
+                        axes_flat = [axes] # Tek grafikse liste yap
+
+                    # Renk paleti
                     colors = plt.cm.get_cmap('tab10', len(predictor_vars))
                     results_list = []
 
+                    # Her bir subplot için başlık ve ayar
+                    for ax in axes_flat:
+                        ax.plot([0,100], [0,100], 'k--', lw=1)
+                        ax.set(xlim=[0,100], ylim=[0,105], xlabel='100-Specificity', ylabel='Sensitivity')
+                        ax.grid(True, alpha=0.3)
+
+                    # Değişkenleri Döngüye Al ve Dağıt
                     for i, var in enumerate(predictor_vars):
+                        # Hangi panele çizilecek? (Modülo aritmetiği ile dağıtım)
+                        # Örn: 2 panel varsa; 0->Panel1, 1->Panel2, 2->Panel1...
+                        target_ax_idx = i % (n_rows * n_cols)
+                        current_ax = axes_flat[target_ax_idx]
+
                         # Veri Hazırla
                         y_t = pd.to_numeric(df[outcome_var], errors='coerce')
                         y_s = pd.to_numeric(df[var], errors='coerce')
@@ -254,29 +292,43 @@ if uploaded_file:
                         except: p_val = 1.0
                         p_txt = f"{p_val:.3f}" + ("*" if p_val<0.001 else "")
 
-                        lbl = var + (" [Inv]" if inverted else "")
+                        lbl = var + (" [Ters]" if inverted else "")
                         results_list.append({
-                            "Variable": lbl, "AUC": f"{auc_val:.3f}", "p": p_txt,
-                            "Cut-off": f"{cutoff:.3f}", "Sens": f"{sens:.3f}", 
-                            "Spec": f"{spec:.3f}", "PPV": f"{ppv:.3f}", "NPV": f"{npv:.3f}"
+                            "Variable": lbl, "AUC": f"{auc_val:.3f}", "p-value": p_txt,
+                            "Cut-off": f"{cutoff:.3f}", "Sensitivity": f"{sens:.3f}", 
+                            "Specificity": f"{spec:.3f}", "PPV": f"{ppv:.3f}", "NPV": f"{npv:.3f}"
                         })
 
-                        ax.plot(fpr*100, tpr*100, lw=2, color=colors(i%10), label=f'{lbl} (AUC={auc_val:.3f})')
+                        # Çizim (Renk seçimi orijinal sıraya göre olsun ki karışmasın)
+                        if len(predictor_vars) <= 10:
+                            c = colors(i)
+                        else:
+                            c = colors(i / len(predictor_vars))
 
-                    ax.plot([0,100], [0,100], 'k--', lw=1)
-                    ax.set(xlim=[0,100], ylim=[0,105], xlabel='100-Specificity', ylabel='Sensitivity', title=plot_title)
-                    ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
-                    ax.grid(True, alpha=0.3)
+                        current_ax.plot(fpr*100, tpr*100, lw=2, color=c, label=f'{lbl} (AUC={auc_val:.3f})')
+
+                    # Boş kalan panelleri kapat (Görsellik için)
+                    if len(predictor_vars) < len(axes_flat):
+                        for j in range(len(predictor_vars), len(axes_flat)):
+                            axes_flat[j].axis('off')
+
+                    # Lejantları Ekle
+                    for ax in axes_flat:
+                        # Eğer o panele çizim yapıldıysa lejant koy
+                        if ax.has_data():
+                             ax.legend(loc='lower right', fontsize='small')
+
+                    plt.suptitle(plot_title, fontsize=16)
+                    plt.tight_layout()
                     
                     st.pyplot(fig, use_container_width=True)
                     
                     buf = BytesIO()
                     fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
-                    st.download_button("💾 Grafiği İndir (300 DPI)", buf.getvalue(), "roc_multi.png", "image/png")
+                    st.download_button("💾 Grafiği İndir (300 DPI)", buf.getvalue(), "roc_multi_grid.png", "image/png")
 
                     st.write("### Karşılaştırmalı Tablo")
                     st.dataframe(pd.DataFrame(results_list), use_container_width=True)
-
         # --- PROJE KAYDETME SEKMESİ ---
         with tab3:
             st.header("💾 Projeyi Bilgisayara Kaydet")
@@ -318,6 +370,7 @@ if uploaded_file:
                     file_name="analiz_projesi.pkl",
                     mime="application/octet-stream"
                 )
+
 
 
 
