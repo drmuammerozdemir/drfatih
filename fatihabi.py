@@ -209,114 +209,146 @@ if uploaded_file:
                     })
                     st.dataframe(tbl, use_container_width=True)
 
-            # 3. MULTIPLE ROC CURVES (GELİŞTİRİLMİŞ LAYOUT)
+            # 3. MULTIPLE ROC CURVES (MANUEL KONTROLLÜ & İSİM DEĞİŞTİRMELİ)
             elif analysis_type == "Multiple ROC Curves":
                 outcome_var = st.sidebar.selectbox("Outcome (Hastalık 0/1)", df.columns, key="m_outcome")
-                predictor_vars = st.sidebar.multiselect("Predictor Değişkenler", df.select_dtypes(include=[np.number]).columns, key="m_predictors")
-                plot_title = st.sidebar.text_input("Ana Başlık", "Combined ROC Analysis", key="m_title")
                 
-                # --- YENİ EKLENEN LAYOUT SEÇENEĞİ ---
+                # --- LAYOUT SEÇİMİ ---
                 layout_mode = st.sidebar.radio(
                     "Grafik Düzeni", 
-                    ["Tek Grafik (Hepsi Bir Arada)", "2 Panel (Yan Yana)", "4 Panel (2x2 Grid)"],
+                    ["Tek Grafik", "2 Panel (Yan Yana)", "4 Panel (2x2 Grid)"],
                     key="m_layout"
                 )
+                
+                plot_title = st.sidebar.text_input("Ana Başlık", "Combined ROC Analysis", key="m_title")
 
-                if predictor_vars:
-                    # Layout Ayarlarına Göre Figür Oluşturma
-                    if layout_mode == "Tek Grafik (Hepsi Bir Arada)":
-                        n_rows, n_cols = 1, 1
-                        figsize = (10, 8)
-                    elif layout_mode == "2 Panel (Yan Yana)":
-                        n_rows, n_cols = 1, 2
-                        figsize = (16, 8) # Genişlik artırıldı
-                    else: # 4 Panel
-                        n_rows, n_cols = 2, 2
-                        figsize = (16, 14) # Hem en hem boy artırıldı
+                # --- DİNAMİK DEĞİŞKEN SEÇİMİ (PANEL PANEL) ---
+                # Seçilen layout'a göre kaç kutu açılacağını belirliyoruz
+                if layout_mode == "Tek Grafik":
+                    n_panels = 1
+                elif layout_mode == "2 Panel (Yan Yana)":
+                    n_panels = 2
+                else: # 4 Panel
+                    n_panels = 4
 
-                    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
-                    
-                    # Axes yapısını düzleştir (Döngüde kolay gezmek için)
-                    if n_rows * n_cols > 1:
+                # Her panel için ayrı bir liste tutacağız
+                panel_selections = []
+                all_selected_vars = set() # İsim değiştirme menüsü için tüm seçilenleri topla
+
+                st.sidebar.markdown("---")
+                st.sidebar.write("### 🎛️ Panel İçerikleri")
+                
+                # Numerik kolonları al
+                num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+
+                for i in range(n_panels):
+                    # Her panel için ayrı multiselect (Key dinamik olmalı: m_panel_0, m_panel_1...)
+                    selection = st.sidebar.multiselect(
+                        f"Panel {i+1} Değişkenleri", 
+                        options=num_cols,
+                        key=f"m_panel_{i}"
+                    )
+                    panel_selections.append(selection)
+                    all_selected_vars.update(selection)
+
+                # --- İSİM DEĞİŞTİRME MODÜLÜ ---
+                custom_names = {}
+                if all_selected_vars:
+                    st.sidebar.markdown("---")
+                    with st.sidebar.expander("✏️ Değişken İsimlerini Düzenle", expanded=False):
+                        for var in all_selected_vars:
+                            # Her değişken için bir text input (Key: rename_varname)
+                            new_name = st.text_input(f"{var} ->", value=var, key=f"rename_{var}")
+                            custom_names[var] = new_name
+
+                # --- GRAFİK ÇİZİMİ ---
+                if any(panel_selections): # En az bir panelde seçim varsa
+                    # Figür boyutlarını ayarla
+                    if n_panels == 1:
+                        fig, axes = plt.subplots(1, 1, figsize=(10, 8))
+                        axes_flat = [axes]
+                    elif n_panels == 2:
+                        fig, axes = plt.subplots(1, 2, figsize=(16, 8))
                         axes_flat = axes.flatten()
-                    else:
-                        axes_flat = [axes] # Tek grafikse liste yap
+                    else: # 4 Panel
+                        fig, axes = plt.subplots(2, 2, figsize=(16, 14))
+                        axes_flat = axes.flatten()
 
-                    # Renk paleti
-                    colors = plt.cm.get_cmap('tab10', len(predictor_vars))
                     results_list = []
-
-                    # Her bir subplot için başlık ve ayar
-                    for ax in axes_flat:
+                    
+                    # Panel panel gez
+                    for i, ax in enumerate(axes_flat):
+                        # O panel için seçilen değişkenleri al
+                        current_vars = panel_selections[i] if i < len(panel_selections) else []
+                        
+                        # Temel Eksen Ayarları
                         ax.plot([0,100], [0,100], 'k--', lw=1)
                         ax.set(xlim=[0,100], ylim=[0,105], xlabel='100-Specificity', ylabel='Sensitivity')
                         ax.grid(True, alpha=0.3)
-
-                    # Değişkenleri Döngüye Al ve Dağıt
-                    for i, var in enumerate(predictor_vars):
-                        # Hangi panele çizilecek? (Modülo aritmetiği ile dağıtım)
-                        # Örn: 2 panel varsa; 0->Panel1, 1->Panel2, 2->Panel1...
-                        target_ax_idx = i % (n_rows * n_cols)
-                        current_ax = axes_flat[target_ax_idx]
-
-                        # Veri Hazırla
-                        y_t = pd.to_numeric(df[outcome_var], errors='coerce')
-                        y_s = pd.to_numeric(df[var], errors='coerce')
-                        mask = ~y_t.isna() & ~y_s.isna()
-                        y_t, y_s = y_t[mask].astype(int), y_s[mask].astype(float)
-                        if set(y_t.unique()) == {1, 2}: y_t = y_t.replace({2: 0, 1: 1})
                         
-                        # Hesapla & Düzelt
-                        fpr, tpr, thres = roc_curve(y_t, y_s)
-                        auc_val = auc(fpr, tpr)
-                        inverted = False
-                        if auc_val < 0.5:
-                            y_s = -y_s
+                        if not current_vars:
+                            # Değişken seçilmediyse o paneli boş bırak veya gizle
+                            if n_panels > 1: ax.text(50, 50, "Değişken Seçilmedi", ha='center')
+                            continue
+
+                        # Renk paleti (O paneldeki değişken sayısı kadar)
+                        colors = plt.cm.get_cmap('tab10', len(current_vars))
+
+                        # O paneldeki değişkenleri çiz
+                        for j, var in enumerate(current_vars):
+                            # Veri Hazırla
+                            y_t = pd.to_numeric(df[outcome_var], errors='coerce')
+                            y_s = pd.to_numeric(df[var], errors='coerce')
+                            mask = ~y_t.isna() & ~y_s.isna()
+                            y_t, y_s = y_t[mask].astype(int), y_s[mask].astype(float)
+                            if set(y_t.unique()) == {1, 2}: y_t = y_t.replace({2: 0, 1: 1})
+                            
+                            # Hesapla & Düzelt
                             fpr, tpr, thres = roc_curve(y_t, y_s)
                             auc_val = auc(fpr, tpr)
-                            inverted = True
+                            inverted = False
+                            if auc_val < 0.5:
+                                y_s = -y_s
+                                fpr, tpr, thres = roc_curve(y_t, y_s)
+                                auc_val = auc(fpr, tpr)
+                                inverted = True
+                            
+                            # İstatistikler
+                            best_idx = np.argmax(tpr - fpr)
+                            sens, spec = tpr[best_idx]*100, (1-fpr[best_idx])*100
+                            cutoff = thres[best_idx]
+                            
+                            # PPV/NPV
+                            pred_cls = (y_s >= cutoff).astype(int)
+                            tn, fp, fn, tp = confusion_matrix(y_t, pred_cls).ravel()
+                            ppv = 100*tp/(tp+fp) if (tp+fp)>0 else 0
+                            npv = 100*tn/(tn+fn) if (tn+fn)>0 else 0
+                            
+                            # P-value
+                            try: _, p_val = mannwhitneyu(y_s[y_t==1], y_s[y_t==0])
+                            except: p_val = 1.0
+                            p_txt = f"{p_val:.3f}" + ("*" if p_val<0.001 else "")
+
+                            # --- İSİM DEĞİŞTİRME UYGULAMASI ---
+                            display_name = custom_names.get(var, var)
+                            lbl = display_name + (" [Ters]" if inverted else "")
+                            
+                            # Tabloya Ekle (Panel bilgisiyle beraber)
+                            results_list.append({
+                                "Panel": f"Panel {i+1}",
+                                "Variable": lbl, "AUC": f"{auc_val:.3f}", "p-value": p_txt,
+                                "Cut-off": f"{cutoff:.3f}", "Sensitivity": f"{sens:.3f}", 
+                                "Specificity": f"{spec:.3f}", "PPV": f"{ppv:.3f}", "NPV": f"{npv:.3f}"
+                            })
+
+                            # Çiz
+                            if len(current_vars) <= 10: c = colors(j)
+                            else: c = colors(j/len(current_vars))
+                            
+                            ax.plot(fpr*100, tpr*100, lw=2, color=c, label=f'{lbl} (AUC={auc_val:.3f})')
                         
-                        # İstatistikler
-                        best_idx = np.argmax(tpr - fpr)
-                        sens, spec = tpr[best_idx]*100, (1-fpr[best_idx])*100
-                        cutoff = thres[best_idx]
-                        
-                        # PPV/NPV
-                        pred_cls = (y_s >= cutoff).astype(int)
-                        tn, fp, fn, tp = confusion_matrix(y_t, pred_cls).ravel()
-                        ppv = 100*tp/(tp+fp) if (tp+fp)>0 else 0
-                        npv = 100*tn/(tn+fn) if (tn+fn)>0 else 0
-                        
-                        # P-value
-                        try: _, p_val = mannwhitneyu(y_s[y_t==1], y_s[y_t==0])
-                        except: p_val = 1.0
-                        p_txt = f"{p_val:.3f}" + ("*" if p_val<0.001 else "")
-
-                        lbl = var + (" [Ters]" if inverted else "")
-                        results_list.append({
-                            "Variable": lbl, "AUC": f"{auc_val:.3f}", "p-value": p_txt,
-                            "Cut-off": f"{cutoff:.3f}", "Sensitivity": f"{sens:.3f}", 
-                            "Specificity": f"{spec:.3f}", "PPV": f"{ppv:.3f}", "NPV": f"{npv:.3f}"
-                        })
-
-                        # Çizim (Renk seçimi orijinal sıraya göre olsun ki karışmasın)
-                        if len(predictor_vars) <= 10:
-                            c = colors(i)
-                        else:
-                            c = colors(i / len(predictor_vars))
-
-                        current_ax.plot(fpr*100, tpr*100, lw=2, color=c, label=f'{lbl} (AUC={auc_val:.3f})')
-
-                    # Boş kalan panelleri kapat (Görsellik için)
-                    if len(predictor_vars) < len(axes_flat):
-                        for j in range(len(predictor_vars), len(axes_flat)):
-                            axes_flat[j].axis('off')
-
-                    # Lejantları Ekle
-                    for ax in axes_flat:
-                        # Eğer o panele çizim yapıldıysa lejant koy
-                        if ax.has_data():
-                             ax.legend(loc='lower right', fontsize='small')
+                        # Lejantı her panelin içine koy
+                        ax.legend(loc='lower right', fontsize='small')
 
                     plt.suptitle(plot_title, fontsize=16)
                     plt.tight_layout()
@@ -325,10 +357,11 @@ if uploaded_file:
                     
                     buf = BytesIO()
                     fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
-                    st.download_button("💾 Grafiği İndir (300 DPI)", buf.getvalue(), "roc_multi_grid.png", "image/png")
+                    st.download_button("💾 Grafiği İndir (300 DPI)", buf.getvalue(), "roc_multi_manual.png", "image/png")
 
                     st.write("### Karşılaştırmalı Tablo")
                     st.dataframe(pd.DataFrame(results_list), use_container_width=True)
+                    
         # --- PROJE KAYDETME SEKMESİ ---
         with tab3:
             st.header("💾 Projeyi Bilgisayara Kaydet")
@@ -370,6 +403,7 @@ if uploaded_file:
                     file_name="analiz_projesi.pkl",
                     mime="application/octet-stream"
                 )
+
 
 
 
