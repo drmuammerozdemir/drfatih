@@ -34,13 +34,18 @@ def load_data(uploaded_file):
             return None
 
     elif file_extension == 'csv':
+        uploaded_file.seek(0)
         return pd.read_csv(uploaded_file, sep=';', encoding='ISO-8859-9')
     elif file_extension == 'txt':
+        uploaded_file.seek(0)
         return pd.read_csv(uploaded_file, sep=';', encoding='ISO-8859-9')
     elif file_extension == 'sav':
-        return pyreadstat.read_sav(uploaded_file)[0]
+        # SPSS dosyaları için geçici dosya oluşturulmalı
+        with open("temp.sav", "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        return pyreadstat.read_sav("temp.sav")[0]
     return None
-
+    
 # --- ANA KOD ---
 
 st.sidebar.header("📁 Veri Yükleme")
@@ -302,3 +307,4 @@ if uploaded_file:
                     file_name="analiz_projesi.pkl",
                     mime="application/octet-stream"
                 )
+
