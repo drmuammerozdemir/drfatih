@@ -238,7 +238,7 @@ if uploaded_file:
                         p_text += "*"
 
                     # Sonuçları listeye ekle
-                    var_label = var + (" [Ters]" if inverted else "")
+                    var_label = var + (" [Inverted]" if inverted else "")
                     
                     results_list.append({
                         "Variable": var_label,
@@ -316,6 +316,7 @@ if uploaded_file:
         **Version**: 1.0
 
         """)
+
 
 
 
