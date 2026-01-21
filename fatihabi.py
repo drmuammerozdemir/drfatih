@@ -7,393 +7,298 @@ import pyreadstat
 from sklearn.metrics import roc_curve, auc, confusion_matrix
 from scipy.stats import spearmanr, norm, mannwhitneyu
 from io import BytesIO
+import pickle
 
-st.set_page_config(page_title="ROC AUC & Correlation Heatmap Dashboard", layout="wide")
-st.title('🔬 ROC AUC & Correlation Heatmap Dashboard (.csv, .txt, .sav)')
+# Sayfa Ayarları
+st.set_page_config(page_title="Dr. Ozdemir Analysis Tool", layout="wide")
+st.title('🔬 ROC AUC & Correlation Dashboard (Proje Kayıt Özellikli)')
 
-uploaded_file = st.file_uploader("Upload CSV, TXT, or SPSS (.sav)", type=["csv", "txt", "sav"])
+# --- FONKSİYONLAR ---
+def load_data(uploaded_file):
+    """Farklı dosya tiplerini yükler ve session_state'i günceller."""
+    file_extension = uploaded_file.name.split('.')[-1]
+    
+    if file_extension == 'pkl':
+        # Proje dosyasını (Veri + Ayarlar) yükle
+        try:
+            saved_state = pickle.load(uploaded_file)
+            # Veriyi al
+            df = saved_state.pop('data_frame')
+            # Ayarları session_state'e geri yükle
+            for key, value in saved_state.items():
+                st.session_state[key] = value
+            st.success("✅ Proje dosyası başarıyla yüklendi! Ayarlarınız geri getirildi.")
+            return df
+        except Exception as e:
+            st.error(f"Proje dosyası açılırken hata oluştu: {e}")
+            return None
+
+    elif file_extension == 'csv':
+        return pd.read_csv(uploaded_file, sep=';', encoding='ISO-8859-9')
+    elif file_extension == 'txt':
+        return pd.read_csv(uploaded_file, sep=';', encoding='ISO-8859-9')
+    elif file_extension == 'sav':
+        return pyreadstat.read_sav(uploaded_file)[0]
+    return None
+
+# --- ANA KOD ---
+
+st.sidebar.header("📁 Veri Yükleme")
+uploaded_file = st.sidebar.file_uploader(
+    "Veri Seti (CSV, TXT, SAV) veya Proje Dosyası (.pkl)", 
+    type=["csv", "txt", "sav", "pkl"]
+)
 
 if uploaded_file:
-    file_extension = uploaded_file.name.split('.')[-1]
+    # Veriyi Yükle
+    df = load_data(uploaded_file)
 
-    if file_extension == 'csv':
-        df = pd.read_csv(uploaded_file, sep=';', encoding='ISO-8859-9')
-    elif file_extension == 'txt':
-        df = pd.read_csv(uploaded_file, sep=';', encoding='ISO-8859-9')
-    elif file_extension == 'sav':
-        with open("temp.sav", "wb") as f:
-            f.write(uploaded_file.read())
-        df, meta = pyreadstat.read_sav("temp.sav")
+    if df is not None:
+        st.write('### 📊 Veri Önizleme:', df.head())
 
-    st.write('Data Preview:', df.head())
+        # --- SIDEBAR AYARLARI ---
+        st.sidebar.header("⚙️ Grafik Ayarları")
+        
+        # Key parametreleri eklendi (Hafıza için şart)
+        palette_choice = st.sidebar.selectbox(
+            "Heatmap Renk Paleti",
+            ["coolwarm", "vlag", "rocket", "mako", "icefire"],
+            key="palette_choice"
+        )
 
-    st.sidebar.header("Global Plot Options")
-    palette_choice = st.sidebar.selectbox(
-        "Heatmap Color Palette",
-        ["coolwarm", "vlag", "rocket", "mako", "icefire"]
-    )
+        analysis_type = st.sidebar.radio(
+            "Analiz Türü Seçin",
+            ["Correlation Heatmap", "Single ROC Curve", "Multiple ROC Curves"],
+            key="analysis_type"
+        )
 
-    st.sidebar.header("Select Analysis")
-    analysis_type = st.sidebar.radio("Choose Analysis",
-                                     ["Correlation Heatmap", "Single ROC Curve", "Multiple ROC Curves"])
+        # Sekmeleri Oluştur
+        tab1, tab2, tab3 = st.tabs(["🔬 Analiz & Grafik", "📋 Detaylı Tablo", "💾 Proje İşlemleri"])
 
-    # Gerekli değişkenleri global yapalım
-    y_true, y_scores = None, None
-    best_threshold = None
-    best_sensitivity = None
-    best_specificity = None
-    roc_auc = None
-    custom_name = ""
+        # --- ANALİZ MANTIĞI ---
+        with tab1:
+            # 1. KORELASYON HEATMAP
+            if analysis_type == "Correlation Heatmap":
+                correlation_vars = st.sidebar.multiselect(
+                    "Korelasyon Değişkenleri (Numerik)",
+                    options=df.select_dtypes(include=[np.number]).columns,
+                    default=df.select_dtypes(include=[np.number]).columns.tolist()[:5], # İlk 5'i varsayılan
+                    key="corr_vars"
+                )
 
-    tab1, tab2, tab3 = st.tabs(["🔬 Analysis", "📋 ROC Table", "🧠 About"])
+                if len(correlation_vars) < 2:
+                    st.warning("Lütfen en az 2 sayısal değişken seçiniz.")
+                else:
+                    heatmap_title = st.sidebar.text_input("Grafik Başlığı", value="Spearman Correlation Heatmap", key="hm_title")
+                    
+                    st.sidebar.markdown("---")
+                    show_annot = st.sidebar.checkbox("Değerleri Göster", value=True, key="hm_annot")
+                    font_scale = st.sidebar.slider("Yazı Boyutu", 0.5, 2.0, 1.0, key="hm_font")
+                    
+                    footnote = st.text_area("Grafik Altı Notu", value="", key="hm_note")
 
-    with tab1:
-        if analysis_type == "Correlation Heatmap":
-            correlation_vars = st.sidebar.multiselect(
-                "Select variables for Correlation Matrix (numeric)",
-                options=df.columns,
-                default=df.select_dtypes(include=[np.number]).columns.tolist()
-            )
+                    # Korelasyon Hesabı
+                    df_corr = df[correlation_vars].apply(pd.to_numeric, errors='coerce').dropna()
+                    corr, _ = spearmanr(df_corr)
+                    corr_df = pd.DataFrame(corr, index=df_corr.columns, columns=df_corr.columns)
+                    mask = np.triu(np.ones_like(corr_df, dtype=bool))
 
-            if len(correlation_vars) < 2:
-                st.warning("Select at least 2 numeric variables.")
-                st.stop()
+                    # Dinamik Boyutlandırma
+                    calc_size = max(10, len(correlation_vars) * 0.8)
+                    fig, ax = plt.subplots(figsize=(calc_size, calc_size * 0.8))
+                    
+                    sns.set(font_scale=font_scale)
+                    sns.heatmap(
+                        corr_df, mask=mask, cmap=palette_choice, center=0,
+                        annot=show_annot, fmt=".2f", square=True, 
+                        linewidths=.5, cbar_kws={"shrink": .75}, ax=ax
+                    )
+                    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+                    plt.title(heatmap_title)
+                    
+                    # Ekrana Basma ve İndirme
+                    st.pyplot(fig, use_container_width=True)
+                    
+                    buf = BytesIO()
+                    fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
+                    st.download_button("💾 Resmi İndir (300 DPI)", buf.getvalue(), "heatmap.png", "image/png")
+                    sns.reset_orig() # Ayarları sıfırla
 
-            heatmap_title = st.sidebar.text_input("Heatmap Title", value="Spearman Correlation Heatmap")
-            
-            # --- YENİ EKLENEN AYARLAR ---
-            st.sidebar.markdown("---")
-            st.sidebar.write("### 🎨 Heatmap Settings")
-            show_annot = st.sidebar.checkbox("Show Values inside cells", value=True)
-            font_scale = st.sidebar.slider("Font Scale", 0.5, 2.0, 1.0)
-            
-            custom_names = {}
-            with st.expander("Rename Variables (Optional)"):
-                for col in correlation_vars:
-                    new_name = st.text_input(f"Rename '{col}'", value=col)
-                    custom_names[col] = new_name
+            # 2. SINGLE ROC CURVE
+            elif analysis_type == "Single ROC Curve":
+                outcome_var = st.sidebar.selectbox("Outcome (Hastalık 0/1)", df.columns, key="s_outcome")
+                predictor_var = st.sidebar.selectbox("Predictor (Değer)", df.columns, key="s_predictor")
+                
+                plot_title = st.sidebar.text_input("Başlık", "ROC Curve", key="s_title")
+                custom_name = st.sidebar.text_input(f"Etiket Adı ({predictor_var})", value=predictor_var, key="s_label")
+                
+                # Veri Hazırlığı
+                y_true = pd.to_numeric(df[outcome_var], errors='coerce')
+                y_scores = pd.to_numeric(df[predictor_var], errors='coerce')
+                mask = ~y_true.isna() & ~y_scores.isna()
+                y_true, y_scores = y_true[mask].astype(int), y_scores[mask].astype(float)
+                if set(y_true.unique()) == {1, 2}: y_true = y_true.replace({2: 0, 1: 1})
 
-            footnote = st.text_area("Add footnote below the plot", value="")
-
-            df_corr = df[correlation_vars].apply(pd.to_numeric, errors='coerce').dropna()
-            df_corr.rename(columns=custom_names, inplace=True)
-
-            corr, _ = spearmanr(df_corr)
-            corr_df = pd.DataFrame(corr, index=df_corr.columns, columns=df_corr.columns)
-            mask = np.triu(np.ones_like(corr_df, dtype=bool))
-
-            # --- DİNAMİK BOYUTLANDIRMA ---
-            # Her değişken için yaklaşık 0.8 inç yer ayır, minimum 10x8 olsun.
-            num_vars = len(correlation_vars)
-            calc_size = max(10, num_vars * 0.8) 
-            
-            fig, ax = plt.subplots(figsize=(calc_size, calc_size * 0.8))
-            
-            # Font büyüklüğünü ayarla
-            sns.set(font_scale=font_scale)
-            
-            sns.heatmap(
-                corr_df, mask=mask, cmap=palette_choice, center=0,
-                annot=show_annot, # Kullanıcı seçimine bağlandı
-                fmt=".2f", square=True, linewidths=.5, 
-                cbar_kws={"shrink": .75}, ax=ax
-            )
-            
-            # Eksen yazılarını düzelt
-            ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
-            ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
-            
-            st.pyplot(fig, use_container_width=True)
-
-            # 2. İndirme Butonu (300 DPI)
-            buf = BytesIO()
-            fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
-            
-            st.download_button(
-                label="💾 Grafiği İndir (300 DPI)",
-                data=buf.getvalue(),
-                file_name="heatmap_300dpi.png",
-                mime="image/png"
-            )
-            # --- KOPYALAYACAĞINIZ KISIM BİTİŞİ ---
-
-            if footnote:
-                st.markdown(f"**Note:** {footnote}")
-
-            if footnote:
-                st.markdown(f"**Note:** {footnote}")
-            
-            # Ayarları sıfırla (diğer grafikleri etkilemesin)
-            sns.reset_orig()
-
-        elif analysis_type == "Single ROC Curve":
-            outcome_var = st.sidebar.selectbox("Select Outcome Variable (0/1)", options=df.columns)
-            predictor_var = st.sidebar.selectbox("Select Predictor Variable (numeric)", options=df.columns)
-
-            plot_title = st.sidebar.text_input("ROC Title", "ROC Curve")
-            x_label = st.sidebar.text_input("X-axis Label", "100-Specificity")
-            y_label = st.sidebar.text_input("Y-axis Label", "Sensitivity")
-            custom_name = st.sidebar.text_input(f"Rename '{predictor_var}'", value=predictor_var)
-            show_ci = st.sidebar.checkbox("Show 95% Confidence Interval", value=True)
-            footnote = st.text_area("Add footnote below the plot", value="")
-
-            y_true = pd.to_numeric(df[outcome_var], errors='coerce')
-            y_scores = pd.to_numeric(df[predictor_var], errors='coerce')
-            mask = ~y_true.isna() & ~y_scores.isna()
-            y_true = y_true[mask].astype(int)
-            y_scores = y_scores[mask].astype(float)
-            y_true = y_true.replace({2: 0, 1: 1})
-
-            # --- BAŞLANGIÇ: Otomatik Yön Düzeltme ---
-            fpr, tpr, thresholds = roc_curve(y_true, y_scores)
-            roc_auc = auc(fpr, tpr)
-
-            if roc_auc < 0.5:
-                # AUC 0.5'ten küçükse, değişken ters çalışıyordur.
-                # Skorları negatife çevirerek yönü düzeltiyoruz.
-                y_scores = -y_scores
+                # ROC Hesabı ve Otomatik Düzeltme
                 fpr, tpr, thresholds = roc_curve(y_true, y_scores)
                 roc_auc = auc(fpr, tpr)
-                st.info(f"🔄 Bilgi: '{predictor_var}' değişkeni hastalık durumu ile ters ilişkili (negatif korelasyon). Analiz için değerler otomatik olarak ters çevrildi.")
-            # --- BİTİŞ ---
-
-            youden_index = tpr - fpr
-            best_index = np.argmax(youden_index)
-            best_threshold = thresholds[best_index]
-            best_sensitivity = tpr[best_index] * 100
-            best_specificity = (1 - fpr[best_index]) * 100
-
-            fig, ax = plt.subplots(figsize=(6, 6))
-            ax.plot(fpr * 100, tpr * 100, lw=2, label=f'{custom_name} (AUC = {roc_auc:.3f})', color='purple', marker='s', markevery=5)
-
-            if show_ci:
-                bootstraps = 1000
-                tpr_boots = []
-                rng = np.random.default_rng(seed=42)
-                for _ in range(bootstraps):
-                    indices = rng.choice(len(y_true), size=len(y_true), replace=True)
-                    if len(np.unique(y_true[indices])) < 2:
-                        continue
-                    fpr_b, tpr_b, _ = roc_curve(y_true[indices], y_scores[indices])
-                    tpr_interp = np.interp(np.linspace(0, 1, 100), fpr_b, tpr_b)
-                    tpr_boots.append(tpr_interp)
-
-                tpr_boots = np.array(tpr_boots)
-                tpr_lower = np.percentile(tpr_boots, 2.5, axis=0)
-                tpr_upper = np.percentile(tpr_boots, 97.5, axis=0)
-
-                ax.plot(np.linspace(0, 100, 100), tpr_lower * 100, linestyle='--', color='gray')
-                ax.plot(np.linspace(0, 100, 100), tpr_upper * 100, linestyle='--', color='gray')
-
-            ax.plot([0, 100], [0, 100], color='black', linestyle='--')
-            ax.set_xlim([0.0, 100.0])
-            ax.set_ylim([0.0, 100.0])
-            ax.set_xlabel(x_label)
-            ax.set_ylabel(y_label)
-            ax.set_title(plot_title)
-            ax.legend(loc="lower right")
-
-            info_text = f"Sensitivity: {best_sensitivity:.1f}\nSpecificity: {best_specificity:.1f}\nCriterion: <= {best_threshold:.3f}"
-            ax.text(60, 15, info_text, fontsize=10,
-                    bbox=dict(boxstyle="round", facecolor="white", edgecolor="navy"))
-
-            # 1. EKRANDA GÖSTERİM (A4 Genişliğine Yayma)
-                # use_container_width=True, grafiği sütun genişliğine kadar büyütür.
-            st.pyplot(fig, use_container_width=True)
-
-            # 2. İndirme Butonu (300 DPI)
-            buf = BytesIO()
-            fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
-            
-            st.download_button(
-                label="💾 Grafiği İndir (300 DPI)",
-                data=buf.getvalue(),
-                file_name="heatmap_300dpi.png",
-                mime="image/png"
-            )
-            # --- KOPYALAYACAĞINIZ KISIM BİTİŞİ ---
-
-            if footnote:
-                st.markdown(f"**Note:** {footnote}")
-
-        elif analysis_type == "Multiple ROC Curves":
-            st.subheader("Multiple ROC Analysis")
-            
-            # 1. Değişken Seçimi
-            outcome_var = st.sidebar.selectbox("Select Outcome Variable (Binary 0/1)", options=df.columns, key="multi_outcome")
-            predictor_vars = st.sidebar.multiselect("Select Predictor Variables", options=df.select_dtypes(include=[np.number]).columns, key="multi_predictors")
-
-            plot_title = st.sidebar.text_input("ROC Title", "Combined ROC Curves")
-            
-            if not predictor_vars:
-                st.info("Please select at least one predictor variable to plot.")
-            else:
-                fig, ax = plt.subplots(figsize=(10, 8))
-                colors = plt.cm.get_cmap('tab10', len(predictor_vars))
                 
-                # Tablo verilerini tutacak liste
-                results_list = []
-
-                # 2. Döngü
-                for i, var in enumerate(predictor_vars):
-                    # Veri Temizleme
-                    y_true_multi = pd.to_numeric(df[outcome_var], errors='coerce')
-                    y_scores_multi = pd.to_numeric(df[var], errors='coerce')
-                    
-                    mask = ~y_true_multi.isna() & ~y_scores_multi.isna()
-                    y_true_clean = y_true_multi[mask].astype(int)
-                    y_scores_clean = y_scores_multi[mask].astype(float)
-                    
-                    if set(y_true_clean.unique()) == {1, 2}:
-                         y_true_clean = y_true_clean.replace({2: 0, 1: 1})
-
-                    # İlk ROC Hesabı
-                    fpr, tpr, thresholds = roc_curve(y_true_clean, y_scores_clean)
+                if roc_auc < 0.5:
+                    y_scores = -y_scores
+                    fpr, tpr, thresholds = roc_curve(y_true, y_scores)
                     roc_auc = auc(fpr, tpr)
-                    
-                    # Yön Kontrolü (AUC < 0.5 ise ters çevir)
-                    inverted = False
-                    if roc_auc < 0.5:
-                        y_scores_clean = -y_scores_clean
-                        fpr, tpr, thresholds = roc_curve(y_true_clean, y_scores_clean)
-                        roc_auc = auc(fpr, tpr)
-                        inverted = True
+                    st.info(f"🔄 Bilgi: '{predictor_var}' ters ilişkili olduğu için otomatik çevrildi.")
 
-                    # İstatistikleri Hesapla (Youden Index)
-                    youden_index = tpr - fpr
-                    best_idx = np.argmax(youden_index)
-                    opt_cutoff = thresholds[best_idx]
-                    sens = tpr[best_idx] * 100
-                    spec = (1 - fpr[best_idx]) * 100
-                    
-                    # --- PPV / NPV Hesabı ---
-                    y_pred = (y_scores_clean >= opt_cutoff).astype(int)
-                    tn, fp, fn, tp = confusion_matrix(y_true_clean, y_pred).ravel()
-                    ppv = 100 * tp / (tp + fp) if (tp + fp) > 0 else 0
-                    npv = 100 * tn / (tn + fn) if (tn + fn) > 0 else 0
+                # Youden Index
+                best_idx = np.argmax(tpr - fpr)
+                best_threshold = thresholds[best_idx]
+                sens, spec = tpr[best_idx]*100, (1-fpr[best_idx])*100
 
-                    # --- P DEĞERİ HESABI (YENİ EKLENDİ) ---
-                    # Mann-Whitney U testi, AUC'nin 0.5'ten farkını test eder (Hızlı yöntem)
-                    group_pos = y_scores_clean[y_true_clean == 1]
-                    group_neg = y_scores_clean[y_true_clean == 0]
-                    try:
-                        _, p_val = mannwhitneyu(group_pos, group_neg, alternative='two-sided')
-                    except ValueError:
-                        p_val = 1.0 # Hata olursa (örn: tüm değerler aynıysa)
-                    
-                    p_text = f"{p_val:.3f}"
-                    if p_val < 0.001:
-                        p_text = "<0.001*"
-                    elif p_val < 0.05:
-                        p_text += "*"
-
-                    # Sonuçları listeye ekle
-                    var_label = var + (" [Inverted]" if inverted else "")
-                    
-                    results_list.append({
-                        "Variable": var_label,
-                        "AUC": f"{roc_auc:.3f}",
-                        "p-value": p_text,              # YENİ SÜTUN
-                        "Cut-off": f"{opt_cutoff:.3f}",
-                        "Sensitivity": f"{sens:.3f}",
-                        "Specificity": f"{spec:.3f}",
-                        "PPV": f"{ppv:.3f}",
-                        "NPV": f"{npv:.3f}"
-                    })
-
-                    # Grafiğe çiz
-                    ax.plot(fpr * 100, tpr * 100, lw=2, color=colors(i),
-                            label=f'{var_label} (AUC={roc_auc:.3f})')
-
-                # 3. Grafik Ayarları
-                ax.plot([0, 100], [0, 100], color='black', linestyle='--', lw=1)
-                ax.set_xlim([0.0, 100.0])
-                ax.set_ylim([0.0, 105.0])
-                ax.set_xlabel('100 - Specificity (False Positive Rate %)')
-                ax.set_ylabel('Sensitivity (True Positive Rate %)')
-                ax.set_title(plot_title)
-                ax.legend(loc="lower right")
-                ax.grid(True, alpha=0.3)
-
-                # 1. EKRANDA GÖSTERİM (A4 Genişliğine Yayma)
-                # use_container_width=True, grafiği sütun genişliğine kadar büyütür.
-            st.pyplot(fig, use_container_width=True)
-
-            # 2. İndirme Butonu (300 DPI)
-            buf = BytesIO()
-            fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
-            
-            st.download_button(
-                label="💾 Grafiği İndir (300 DPI)",
-                data=buf.getvalue(),
-                file_name="heatmap_300dpi.png",
-                mime="image/png"
-            )
-            # --- KOPYALAYACAĞINIZ KISIM BİTİŞİ ---
-
-            if footnote:
-                st.markdown(f"**Note:** {footnote}")
+                # Çizim
+                fig, ax = plt.subplots(figsize=(6, 6))
+                ax.plot(fpr*100, tpr*100, color='purple', lw=2, label=f'{custom_name} (AUC={roc_auc:.3f})')
                 
-                # 4. Tabloyu Göster
-                st.write("### 📋 Comparative Diagnostic Performance Table")
-                metrics_df = pd.DataFrame(results_list)
-                st.dataframe(metrics_df, use_container_width=True)
-    with tab2:
-        if analysis_type == "Single ROC Curve" and y_true is not None:
-            y_pred = (y_scores <= best_threshold).astype(int)
-            tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-            ppv = 100 * tp / (tp + fp) if (tp + fp) != 0 else 0
-            npv = 100 * tn / (tn + fn) if (tn + fn) != 0 else 0
+                # CI Alanı (Basit Bootstrapping Görseli)
+                # (Hız için sadece çizgiyi çiziyoruz, CI bandı eklenmedi)
+                
+                ax.plot([0, 100], [0, 100], 'k--')
+                ax.set(xlabel='100-Specificity', ylabel='Sensitivity', xlim=[0,100], ylim=[0,105], title=plot_title)
+                ax.legend(loc='lower right')
+                
+                # Info Box
+                ax.text(60, 15, f"Sens: {sens:.1f}\nSpec: {spec:.1f}\nCut: {best_threshold:.3f}", 
+                        bbox=dict(boxstyle="round", facecolor="white", edgecolor="navy"))
 
-            aucs = []
-            for _ in range(1000):
-                indices = np.random.choice(len(y_true), len(y_true), replace=True)
-                if len(np.unique(y_true[indices])) < 2:
-                    continue
-                fpr_b, tpr_b, _ = roc_curve(y_true[indices], y_scores[indices])
-                aucs.append(auc(fpr_b, tpr_b))
-            ci_lower = np.percentile(aucs, 2.5)
-            ci_upper = np.percentile(aucs, 97.5)
-            auc_mean = np.mean(aucs)
-            auc_std = np.std(aucs)
-            z = (auc_mean - 0.5) / (auc_std if auc_std > 0 else 1e-6)
-            p_value = 2 * (1 - norm.cdf(abs(z)))
+                st.pyplot(fig, use_container_width=True)
+                
+                buf = BytesIO()
+                fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
+                st.download_button("💾 Resmi İndir (300 DPI)", buf.getvalue(), "roc_single.png", "image/png")
 
-            table_df = pd.DataFrame({
-                "Marker": [custom_name],
-                "Cut-off": [round(best_threshold, 3)],
-                "AUC (95% CI)": [f"{roc_auc:.3f} ({ci_lower:.3f}-{ci_upper:.3f})"],
-                "p": [f"{p_value:.3f}" + ("*" if p_value < 0.05 else "")],
-                "Sensitivity": [round(best_sensitivity, 1)],
-                "Specificity": [round(best_specificity, 1)],
-                "PPV": [round(ppv, 1)],
-                "NPV": [round(npv, 1)]
-            })
+                # TABLO KISMI (Single ROC için)
+                with tab2:
+                    st.write("### Tanısal Performans Tablosu")
+                    # P değeri hesabı
+                    pos, neg = y_scores[y_true==1], y_scores[y_true==0]
+                    try: _, p_val = mannwhitneyu(pos, neg)
+                    except: p_val = 1.0
+                    
+                    tbl = pd.DataFrame({
+                        "Marker": [custom_name],
+                        "AUC": [f"{roc_auc:.3f}"],
+                        "p-value": [f"{p_val:.3f}" + ("*" if p_val<0.05 else "")],
+                        "Cut-off": [f"{best_threshold:.3f}"],
+                        "Sensitivity": [f"{sens:.1f}"],
+                        "Specificity": [f"{spec:.1f}"]
+                    })
+                    st.dataframe(tbl, use_container_width=True)
 
-            st.dataframe(table_df)
+            # 3. MULTIPLE ROC CURVES
+            elif analysis_type == "Multiple ROC Curves":
+                outcome_var = st.sidebar.selectbox("Outcome (Hastalık 0/1)", df.columns, key="m_outcome")
+                predictor_vars = st.sidebar.multiselect("Predictor Değişkenler", df.select_dtypes(include=[np.number]).columns, key="m_predictors")
+                plot_title = st.sidebar.text_input("Başlık", "Combined ROC Analysis", key="m_title")
 
-    with tab3:
-        st.markdown("""
-        **ROC AUC & Correlation Heatmap Dashboard**
+                if predictor_vars:
+                    fig, ax = plt.subplots(figsize=(10, 8))
+                    colors = plt.cm.get_cmap('tab10', len(predictor_vars))
+                    results_list = []
 
-        - ROC curves with cutoff, CI, and AUC calculations
-        - Diagnostic performance table with Sensitivity, Specificity, PPV, NPV
-        - Developed interactively with support for CSV, TXT, SAV formats
+                    for i, var in enumerate(predictor_vars):
+                        # Veri Hazırla
+                        y_t = pd.to_numeric(df[outcome_var], errors='coerce')
+                        y_s = pd.to_numeric(df[var], errors='coerce')
+                        mask = ~y_t.isna() & ~y_s.isna()
+                        y_t, y_s = y_t[mask].astype(int), y_s[mask].astype(float)
+                        if set(y_t.unique()) == {1, 2}: y_t = y_t.replace({2: 0, 1: 1})
+                        
+                        # Hesapla & Düzelt
+                        fpr, tpr, thres = roc_curve(y_t, y_s)
+                        auc_val = auc(fpr, tpr)
+                        inverted = False
+                        if auc_val < 0.5:
+                            y_s = -y_s
+                            fpr, tpr, thres = roc_curve(y_t, y_s)
+                            auc_val = auc(fpr, tpr)
+                            inverted = True
+                        
+                        # İstatistikler
+                        best_idx = np.argmax(tpr - fpr)
+                        sens, spec = tpr[best_idx]*100, (1-fpr[best_idx])*100
+                        cutoff = thres[best_idx]
+                        
+                        # PPV/NPV
+                        pred_cls = (y_s >= cutoff).astype(int)
+                        tn, fp, fn, tp = confusion_matrix(y_t, pred_cls).ravel()
+                        ppv = 100*tp/(tp+fp) if (tp+fp)>0 else 0
+                        npv = 100*tn/(tn+fn) if (tn+fn)>0 else 0
+                        
+                        # P-value
+                        try: _, p_val = mannwhitneyu(y_s[y_t==1], y_s[y_t==0])
+                        except: p_val = 1.0
+                        p_txt = f"{p_val:.3f}" + ("*" if p_val<0.001 else "")
 
-        **Version**: 1.0
+                        lbl = var + (" [Ters]" if inverted else "")
+                        results_list.append({
+                            "Variable": lbl, "AUC": f"{auc_val:.3f}", "p": p_txt,
+                            "Cut-off": f"{cutoff:.3f}", "Sens": f"{sens:.3f}", 
+                            "Spec": f"{spec:.3f}", "PPV": f"{ppv:.3f}", "NPV": f"{npv:.3f}"
+                        })
 
-        """)
+                        ax.plot(fpr*100, tpr*100, lw=2, color=colors(i%10), label=f'{lbl} (AUC={auc_val:.3f})')
 
+                    ax.plot([0,100], [0,100], 'k--', lw=1)
+                    ax.set(xlim=[0,100], ylim=[0,105], xlabel='100-Specificity', ylabel='Sensitivity', title=plot_title)
+                    ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
+                    ax.grid(True, alpha=0.3)
+                    
+                    st.pyplot(fig, use_container_width=True)
+                    
+                    buf = BytesIO()
+                    fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
+                    st.download_button("💾 Grafiği İndir (300 DPI)", buf.getvalue(), "roc_multi.png", "image/png")
 
+                    st.write("### Karşılaştırmalı Tablo")
+                    st.dataframe(pd.DataFrame(results_list), use_container_width=True)
 
-
-
-
-
-
-
-
-
-
-
-
+        # --- PROJE KAYDETME SEKMESİ ---
+        with tab3:
+            st.header("💾 Projeyi Bilgisayara Kaydet")
+            st.info("""
+            Bu özellik, mevcut verinizi ve yaptığınız tüm seçimleri (değişkenler, renkler, başlıklar) 
+            bir dosya (.pkl) olarak indirir. Daha sonra bu dosyayı 'Veri Yükleme' kısmından yükleyerek 
+            kaldığınız yerden devam edebilirsiniz.
+            """)
+            
+            # Kaydedilecek verileri hazırla
+            if st.button("Proje Dosyasını Oluştur ve İndir"):
+                project_state = {
+                    "data_frame": df, # Verinin kendisi
+                    # Widget Key'lerini kaydet
+                    "palette_choice": st.session_state.get("palette_choice"),
+                    "analysis_type": st.session_state.get("analysis_type"),
+                    "corr_vars": st.session_state.get("corr_vars"),
+                    "hm_title": st.session_state.get("hm_title"),
+                    "hm_annot": st.session_state.get("hm_annot"),
+                    "hm_font": st.session_state.get("hm_font"),
+                    "hm_note": st.session_state.get("hm_note"),
+                    "s_outcome": st.session_state.get("s_outcome"),
+                    "s_predictor": st.session_state.get("s_predictor"),
+                    "s_title": st.session_state.get("s_title"),
+                    "s_label": st.session_state.get("s_label"),
+                    "m_outcome": st.session_state.get("m_outcome"),
+                    "m_predictors": st.session_state.get("m_predictors"),
+                    "m_title": st.session_state.get("m_title"),
+                }
+                
+                # Pickle ile paketle
+                buffer = BytesIO()
+                pickle.dump(project_state, buffer)
+                buffer.seek(0)
+                
+                st.download_button(
+                    label="⬇️ Proje Dosyasını İndir (.pkl)",
+                    data=buffer,
+                    file_name="analiz_projesi.pkl",
+                    mime="application/octet-stream"
+                )
