@@ -254,7 +254,7 @@ if uploaded_file:
                         except: p_val = 1.0
                         p_txt = f"{p_val:.3f}" + ("*" if p_val<0.001 else "")
 
-                        lbl = var + (" [Ters]" if inverted else "")
+                        lbl = var + (" [Inv]" if inverted else "")
                         results_list.append({
                             "Variable": lbl, "AUC": f"{auc_val:.3f}", "p": p_txt,
                             "Cut-off": f"{cutoff:.3f}", "Sens": f"{sens:.3f}", 
@@ -318,5 +318,6 @@ if uploaded_file:
                     file_name="analiz_projesi.pkl",
                     mime="application/octet-stream"
                 )
+
 
 
