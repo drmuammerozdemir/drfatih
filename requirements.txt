@@ -3,6 +3,7 @@ pandas
 numpy
 matplotlib
 seaborn
+pyreadstat
 scikit-learn
 scipy
-pyreadstat
+openpyxl
