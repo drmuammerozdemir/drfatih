@@ -148,20 +148,25 @@ if uploaded_file:
     if df is not None:
         st.write('### 📊 Veri Önizleme:', df.head())
 
-        # --- GLOBAL DEĞİŞKEN ADI DÜZENLEME ---
+        # --- 1. GLOBAL DEĞİŞKEN ADI DÜZENLEME PANENELİ (GÖRÜNÜR & ETKİN) ---
         num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
         
         st.sidebar.markdown("---")
-        with st.sidebar.expander("✏️ Değişken Etiketlerini Düzenle", expanded=False):
-            st.caption("Grafik ve tablolarda görünecek isimleri değiştirebilirsiniz:")
-            custom_names = {}
+        st.sidebar.subheader("✏️ Değişken Adlarını Düzenle")
+        
+        custom_names = {}
+        with st.sidebar.expander("Sütun İsimlerini Değiştir (Etiketler)", expanded=True):
+            st.caption("Aşağıdaki kutulardan değişken isimlerini Türkçe veya makale formatına çevirebilirsiniz:")
             for col in df.columns:
                 key_name = f"global_rename_{col}"
-                default_val = st.session_state.get(key_name, col)
-                new_val = st.text_input(f"{col} ->", value=default_val, key=key_name)
-                custom_names[col] = new_val
+                if key_name not in st.session_state:
+                    st.session_state[key_name] = col
+                # Kullanıcının yazdığı yeni ismi al
+                user_label = st.text_input(f"Orijinal: {col}", key=key_name)
+                custom_names[col] = user_label if user_label.strip() != "" else col
 
         # --- SIDEBAR GRAFİK AYARLARI ---
+        st.sidebar.markdown("---")
         st.sidebar.header("⚙️ Analiz & Grafik Ayarları")
         
         analysis_type = st.sidebar.radio(
@@ -181,7 +186,7 @@ if uploaded_file:
         # Sekmeleri Oluştur
         tab1, tab2, tab3 = st.tabs(["🔬 Analiz & Grafik", "📋 SPSS Benzeri Detaylı Tablolar", "💾 Proje İşlemleri"])
 
-        # --- 1. KORELASYON ANALİZİ ---
+        # --- A. KORELASYON ANALİZİ ---
         if analysis_type == "Correlation Heatmap":
             st.sidebar.subheader("Korelasyon Parametreleri")
             
@@ -200,10 +205,12 @@ if uploaded_file:
 
             palette_choice = st.sidebar.selectbox("Heatmap Renk Paleti", palette_options, key="palette_choice")
 
+            # format_func kullanarak özelleştirilmiş isimleri menüde gösteriyoruz
             correlation_vars = st.sidebar.multiselect(
                 "Korelasyon Değişkenleri (Numerik)",
                 options=num_cols,
                 default=num_cols[:5] if len(num_cols) >= 5 else num_cols,
+                format_func=lambda x: custom_names.get(x, x),
                 key="corr_vars"
             )
 
@@ -259,15 +266,29 @@ if uploaded_file:
                     spss_corr_table = generate_spss_corr_table(corr_df, p_df, n_df, custom_names, corr_method)
                     st.dataframe(spss_corr_table, use_container_width=True)
 
-                    # Excel / CSV İndirme
-                    excel_buf = BytesIO()
-                    spss_corr_table.to_excel(excel_buf, index=False)
-                    st.download_button("⬇️ SPSS Tablosunu Excel Olarak İndir", excel_buf.getvalue(), "spss_correlation_table.xlsx", "application/vnd.ms-excel")
+                    # Excel veya CSV olarak Güvenli İndirme
+                    try:
+                        excel_buf = BytesIO()
+                        spss_corr_table.to_excel(excel_buf, index=False)
+                        st.download_button("⬇️ SPSS Tablosunu Excel Olarak İndir (.xlsx)", excel_buf.getvalue(), "spss_correlation_table.xlsx", "application/vnd.ms-excel")
+                    except Exception:
+                        csv_data = spss_corr_table.to_csv(index=False, sep=';', encoding='utf-8-sig')
+                        st.download_button("⬇️ SPSS Tablosunu CSV Olarak İndir (.csv)", csv_data, "spss_correlation_table.csv", "text/csv")
 
-        # --- 2. SINGLE ROC CURVE ---
+        # --- B. SINGLE ROC CURVE ---
         elif analysis_type == "Single ROC Curve":
-            outcome_var = st.sidebar.selectbox("Outcome (Hastalık 0/1)", df.columns, key="s_outcome")
-            predictor_var = st.sidebar.selectbox("Predictor (Değer)", num_cols, key="s_predictor")
+            outcome_var = st.sidebar.selectbox(
+                "Outcome (Hastalık 0/1)", 
+                df.columns, 
+                format_func=lambda x: custom_names.get(x, x),
+                key="s_outcome"
+            )
+            predictor_var = st.sidebar.selectbox(
+                "Predictor (Değer)", 
+                num_cols, 
+                format_func=lambda x: custom_names.get(x, x),
+                key="s_predictor"
+            )
             plot_title = st.sidebar.text_input("Başlık", "Single ROC Curve Analysis", key="s_title")
             line_color = st.sidebar.color_picker("Çizgi Rengi", "#800080", key="s_color")
 
@@ -286,7 +307,7 @@ if uploaded_file:
                 y_scores = -y_scores
                 fpr, tpr, thresholds = roc_curve(y_true, y_scores)
                 roc_auc = auc(fpr, tpr)
-                st.info(f"🔄 Bilgi: '{predictor_var}' ters ilişkili olduğu için otomatik çevrildi.")
+                st.info(f"🔄 Bilgi: '{custom_names.get(predictor_var, predictor_var)}' ters ilişkili olduğu için otomatik çevrildi.")
 
             best_idx = np.argmax(tpr - fpr)
             best_threshold = thresholds[best_idx]
@@ -339,9 +360,14 @@ if uploaded_file:
                 }])
                 st.dataframe(spss_roc_tbl, use_container_width=True)
 
-        # --- 3. MULTIPLE ROC CURVES ---
+        # --- C. MULTIPLE ROC CURVES ---
         elif analysis_type == "Multiple ROC Curves":
-            outcome_var = st.sidebar.selectbox("Outcome (Hastalık 0/1)", df.columns, key="m_outcome")
+            outcome_var = st.sidebar.selectbox(
+                "Outcome (Hastalık 0/1)", 
+                df.columns, 
+                format_func=lambda x: custom_names.get(x, x),
+                key="m_outcome"
+            )
             layout_mode = st.sidebar.radio("Grafik Düzeni", ["Tek Grafik", "2 Panel (Yan Yana)", "4 Panel (2x2 Grid)"], key="m_layout")
             plot_title = st.sidebar.text_input("Ana Başlık", "Combined ROC Analysis", key="m_title")
             roc_palette_choice = st.sidebar.selectbox("ROC Çizgi Paleti", roc_palette_options, key="m_roc_palette")
@@ -355,6 +381,7 @@ if uploaded_file:
                 selection = st.sidebar.multiselect(
                     f"Panel {i+1} Değişkenleri", 
                     options=num_cols,
+                    format_func=lambda x: custom_names.get(x, x),
                     key=f"m_panel_{i}"
                 )
                 panel_selections.append(selection)
@@ -450,14 +477,18 @@ if uploaded_file:
                     res_df = pd.DataFrame(results_list)
                     st.dataframe(res_df, use_container_width=True)
 
-                    excel_buf = BytesIO()
-                    res_df.to_excel(excel_buf, index=False)
-                    st.download_button("⬇️ SPSS ROC Tablosunu Excel Olarak İndir", excel_buf.getvalue(), "spss_multi_roc.xlsx", "application/vnd.ms-excel")
+                    try:
+                        excel_buf = BytesIO()
+                        res_df.to_excel(excel_buf, index=False)
+                        st.download_button("⬇️ SPSS ROC Tablosunu Excel Olarak İndir (.xlsx)", excel_buf.getvalue(), "spss_multi_roc.xlsx", "application/vnd.ms-excel")
+                    except Exception:
+                        csv_data = res_df.to_csv(index=False, sep=';', encoding='utf-8-sig')
+                        st.download_button("⬇️ SPSS ROC Tablosunu CSV Olarak İndir (.csv)", csv_data, "spss_multi_roc.csv", "text/csv")
 
         # --- 3. PROJE KAYDETME SEKMESİ ---
         with tab3:
             st.header("💾 Projeyi Bilgisayara Kaydet")
-            st.info("Bu işlem verinizi, değişken isimlerinizi ve tüm grafik parametrelerinizi kapsayan bir .pkl dosyası indirir.")
+            st.info("Bu işlem verinizi, değiştirdiğiniz isimleri ve tüm grafik parametrelerinizi kapsayan bir .pkl dosyası indirir.")
             
             if st.button("Proje Dosyasını Oluştur ve İndir"):
                 project_state = {
@@ -480,7 +511,7 @@ if uploaded_file:
                     "m_roc_palette": st.session_state.get("m_roc_palette")
                 }
 
-                # Dinamik Key'leri Ekle
+                # Dinamik Key'leri Ekle (Paneller ve Değiştirilen İsimler)
                 for key in st.session_state:
                     if key.startswith("m_panel_") or key.startswith("global_rename_"):
                         project_state[key] = st.session_state[key]
